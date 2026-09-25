@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Anomaly Detection Dashboard</title>
+    <style>
+        /* CSS styles remain the same for consistency */
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; }
+        .container { max-width: 1200px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.9em; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #f0f0f0; }
+        .loading { color: #888; text-align: center; }
+        .best-model { background-color: #e6ffe6; font-weight: bold; }
+        .plot-section { margin-top: 30px; text-align: center; }
+        .plot-section img { max-width: 100%; height: auto; border: 1px solid #ccc; border-radius: 5px; }
+        .inference-table td:nth-child(2) { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Deep Learning Anomaly Detection in Solar Power Plant</h1>
+        
+        <h2>0. Final Project Inference and Conclusion</h2>
+        <div id="inference-output">
+            <p class="loading">Calculating final inference...</p>
+        </div>
+        
+        <hr>
+
+        <h2>1. Model Comparison Metrics for FFNN, LSTM, and Meta-Ensemble</h2>
+        <p>The **Meta-Ensemble (XGBoost)** model is the superior choice, as indicated by its high **AUC** score.</p>
+        
+        <div id="metrics-output">
+            <p class="loading">Loading model comparison metrics...</p>
+        </div>
+
+        <div class="plot-section">
+            <h3 style="text-align: left;">Model Performance Graph (AUC Comparison)</h3>
+            <img id="auc-plot" src="http://127.0.0.1:5000/plots/model_comparison_auc.png" alt="Model Comparison AUC Plot" onerror="this.onerror=null; this.src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; document.getElementById('auc-plot-message').innerHTML='<p style=\'color:red;\'>Loading AUC chart failed. Ensure the backend is running and the plot files exist in backend/plots/.</p>';">
+            <div id="auc-plot-message"></div>
+        </div>
+
+        <hr>
+
+        <h2>2. Specific Detected Anomalies: Sudden Spikes</h2>
+        <p>A sample of the production events identified as anomalies, characterized as **Sudden Spikes** (high outliers).</p>
+        
+        <div id="anomalies-output">
+            <p class="loading">Loading detected anomalies...</p>
+        </div>
+        
+        <div class="plot-section">
+            <h3 style="text-align: left;">Anomaly Time Series Visualization</h3>
+            <img id="ts-plot" src="http://127.0.0.1:5000/plots/anomaly_time_series_visualization.png" alt="Anomaly Time Series Plot" onerror="this.onerror=null; this.src='data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; document.getElementById('ts-plot-message').innerHTML='<p style=\'color:red;\'>Loading Time Series chart failed. Ensure the backend is running and the plot files exist in backend/plots/.</p>';">
+            <div id="ts-plot-message"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://127.0.0.1:5000/api/';
+
+        function createTable(data, containerId, highlightKey = null, highlightValue = null, tableClass = '') {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p>No data available.</p>';
+                return;
+            }
+            const table = document.createElement('table');
+            table.className = tableClass;
+            const thead = table.createTHead();
+            const tbody = table.createTBody();
+
+            const headers = Object.keys(data[0]);
+            
+            // Create Header Row (Skip for inference table which uses keys as labels)
+            if (tableClass !== 'inference-table') {
+                const headerRow = thead.insertRow();
+                headers.forEach(header => {
+                    const th = document.createElement('th');
+                    th.textContent = header.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                    headerRow.appendChild(th);
+                });
+            }
+
+            // Create Body Rows
+            data.forEach(item => {
+                const row = tbody.insertRow();
+                if (highlightKey && item[highlightKey] === highlightValue) {
+                    row.classList.add('best-model');
+                }
+                headers.forEach(header => {
+                    const cell = row.insertCell();
+                    cell.textContent = item[header];
+                });
+            });
+            container.appendChild(table);
+        }
+        
+        // 0. Fetch Inference Result
+        fetch(API_BASE_URL + 'inference')
+            .then(response => response.json())
+            .then(data => {
+                createTable(data, 'inference-output', null, null, 'inference-table');
+            })
+            .catch(error => {
+                console.error('Error fetching inference:', error);
+                document.getElementById('inference-output').innerHTML = '<p style="color:red;">Error fetching inference result.</p>';
+            });
+
+        // 1. Fetch Metrics
+        fetch(API_BASE_URL + 'metrics')
+            .then(response => response.json())
+            .then(data => {
+                const bestModel = data.reduce((max, current) => 
+                    (current['AUC'] > max['AUC'] ? current : max), data[0]);
+                createTable(data, 'metrics-output', 'Model', bestModel.Model);
+            })
+            .catch(error => {
+                console.error('Error fetching metrics:', error);
+                document.getElementById('metrics-output').innerHTML = '<p style="color:red;">Error fetching metrics. Is the backend running?</p>';
+            });
+
+
+        // 2. Fetch Anomalies
+        fetch(API_BASE_URL + 'anomalies')
+            .then(response => response.json())
+            .then(data => {
+                const sampleData = data.slice(0, 10); 
+                createTable(sampleData, 'anomalies-output');
+            })
+            .catch(error => {
+                console.error('Error fetching anomalies:', error);
+                document.getElementById('anomalies-output').innerHTML = '<p style="color:red;">Error fetching anomalies. Is the backend running?</p>';
+            });
+    </script>
+</body>
+</html>

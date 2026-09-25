@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anomaly Detection Dashboard - Upload Dataset</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .anomaly-card {
+            transition: all 0.3s ease;
+        }
+        .anomaly-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .metric-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .loading {
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .anomaly-sudden-rise { background-color: #ef4444; color: white; }
+        .anomaly-sudden-fall { background-color: #3b82f6; color: white; }
+        .anomaly-gradual-rise { background-color: #f59e0b; color: white; }
+        .anomaly-gradual-fall { background-color: #8b5cf6; color: white; }
+        .anomaly-fluctuation { background-color: #10b981; color: white; }
+        .anomaly-normal { background-color: #6b7280; color: white; }
+        .upload-area {
+            border: 2px dashed #cbd5e1;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #6366f1;
+            background-color: #f8fafc;
+        }
+        .upload-area.dragover {
+            border-color: #6366f1;
+            background-color: #eef2ff;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-indigo-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <h1 class="text-2xl font-bold text-gray-900">Anomaly Detection Dashboard</h1>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Alert -->
+        <div id="statusAlert" class="hidden mb-6 p-4 rounded-lg"></div>
+
+        <!-- File Upload Section -->
+        <div id="uploadSection" class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-bold text-gray-900 mb-6">📁 Upload Your Dataset</h2>
+            
+            <div class="mb-6">
+                <div id="uploadArea" class="upload-area rounded-lg p-8 text-center cursor-pointer">
+                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                    </svg>
+                    <p class="text-lg font-medium text-gray-900 mb-2">Drop your CSV file here or click to browse</p>
+                    <p class="text-sm text-gray-500">Supported format: CSV (max 16MB)</p>
+                    <input type="file" id="fileInput" accept=".csv" class="hidden">
+                </div>
+            </div>
+
+            <!-- Required Columns Info -->
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700">
+                            <strong>Required Columns:</strong> Production, Source, StartHour, monthName, dayName
+                        </p>
+                        <p class="text-sm text-blue-700 mt-1">
+                            Your CSV file should contain these columns for proper anomaly detection.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Info (shown after upload) -->
+            <div id="dataInfo" class="hidden">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">📊 Dataset Information</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-gray-900" id="dataRows">-</div>
+                        <div class="text-sm text-gray-600">Rows</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-gray-900" id="dataColumns">-</div>
+                        <div class="text-sm text-gray-600">Columns</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-gray-900" id="dataMean">-</div>
+                        <div class="text-sm text-gray-600">Mean Production</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-2xl font-bold text-gray-900" id="dataStd">-</div>
+                        <div class="text-sm text-gray-600">Std Production</div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <p class="text-sm text-gray-600"><strong>Columns:</strong> <span id="columnNames"></span></p>
+                </div>
+            </div>
+
+            <!-- Train Button -->
+            <div class="mt-6">
+                <button id="trainBtn" class="w-full bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition disabled:bg-gray-400" disabled>
+                    <span id="trainBtnText">Train Models</span>
+                    <svg id="loadingIcon" class="w-5 h-5 loading inline ml-2 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Results Section (hidden initially) -->
+        <div id="resultsSection" class="hidden">
+            <!-- Model Metrics Cards -->
+            <div id="metricsSection" class="hidden">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Model Performance Metrics</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <!-- FFNN Card -->
+                    <div class="metric-card rounded-lg p-6 anomaly-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">FFNN</h3>
+                            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span>Accuracy:</span>
+                                <span id="ffnn-accuracy" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Precision:</span>
+                                <span id="ffnn-precision" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Recall:</span>
+                                <span id="ffnn-recall" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>F1 Score:</span>
+                                <span id="ffnn-f1" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between text-lg font-bold">
+                                <span>AUC:</span>
+                                <span id="ffnn-auc">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LSTM Card -->
+                    <div class="metric-card rounded-lg p-6 anomaly-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">LSTM</h3>
+                            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M12.316 3.051a1 1 0 00-.633 1.265l-4 12a1 1 0 11-1.898-.632l4-12a1 1 0 011.265-.633zM5.707 6.293a1 1 0 010 1.414L3.414 10l2.293 2.293a1 1 0 11-1.414 1.414l-3-3a1 1 0 010-1.414l3-3a1 1 0 011.414 0zm8.586 0a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 11-1.414-1.414L16.586 10l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span>Accuracy:</span>
+                                <span id="lstm-accuracy" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Precision:</span>
+                                <span id="lstm-precision" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Recall:</span>
+                                <span id="lstm-recall" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>F1 Score:</span>
+                                <span id="lstm-f1" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between text-lg font-bold">
+                                <span>AUC:</span>
+                                <span id="lstm-auc">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- XGBoost Card -->
+                    <div class="metric-card rounded-lg p-6 anomaly-card">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-lg font-semibold">Meta-Ensemble XGBoost</h3>
+                            <div class="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center">
+                                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span>Accuracy:</span>
+                                <span id="xgboost-accuracy" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Precision:</span>
+                                <span id="xgboost-precision" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Recall:</span>
+                                <span id="xgboost-recall" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>F1 Score:</span>
+                                <span id="xgboost-f1" class="font-bold">-</span>
+                            </div>
+                            <div class="flex justify-between text-lg font-bold">
+                                <span>AUC:</span>
+                                <span id="xgboost-auc">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Best Model Recommendation -->
+            <div id="bestModelSection" class="hidden mb-8">
+                <div class="bg-gradient-to-r from-green-50 to-blue-50 rounded-lg shadow-lg p-6 border-l-4 border-green-500">
+                    <h2 class="text-xl font-bold text-gray-900 mb-4">🏆 Best Model by AUC Score</h2>
+                    <div id="bestModelContent" class="space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- AUC Comparison Section -->
+            <div id="aucComparisonSection" class="hidden mb-8">
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-xl font-bold text-gray-900 mb-4">📈 AUC Score Comparison</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="text-center p-4 bg-blue-50 rounded-lg">
+                            <div class="text-3xl font-bold text-blue-600" id="auc-ffnn">-</div>
+                            <div class="text-sm text-gray-600">FFNN</div>
+                        </div>
+                        <div class="text-center p-4 bg-green-50 rounded-lg">
+                            <div class="text-3xl font-bold text-green-600" id="auc-lstm">-</div>
+                            <div class="text-sm text-gray-600">LSTM</div>
+                        </div>
+                        <div class="text-center p-4 bg-purple-50 rounded-lg">
+                            <div class="text-3xl font-bold text-purple-600" id="auc-xgboost">-</div>
+                            <div class="text-sm text-gray-600">Meta-Ensemble XGBoost</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visualization Section -->
+            <div id="visualizationSection" class="hidden">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Visualizations</h2>
+                
+                <!-- AUC-focused ROC Curves -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">ROC Curves Comparison (Best Model Highlighted)</h3>
+                        <img id="rocCurvesPlot" class="w-full rounded" />
+                        <p class="text-sm text-gray-600 mt-2">AUC-based model comparison with best model highlighted</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Confusion Matrices (Best Model Highlighted)</h3>
+                        <img id="confusionMatricesPlot" class="w-full rounded" />
+                        <p class="text-sm text-gray-600 mt-2">Best model highlighted in green based on highest AUC</p>
+                    </div>
+                </div>
+
+                <!-- Separate Time Series for Each Model -->
+                <div class="mb-8">
+                    <h3 class="text-lg font-semibold mb-4">Time Series with Anomaly Types by Model</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h4 class="text-md font-semibold mb-4 text-blue-600">FFNN Model</h4>
+                            <img id="timeSeriesFFNN" class="w-full rounded" />
+                            <p class="text-sm text-gray-600 mt-2">Anomaly types: Sudden Rise/Fall, Gradual Rise/Fall, Fluctuation</p>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h4 class="text-md font-semibold mb-4 text-green-600">LSTM Model</h4>
+                            <img id="timeSeriesLSTM" class="w-full rounded" />
+                            <p class="text-sm text-gray-600 mt-2">Anomaly types: Sudden Rise/Fall, Gradual Rise/Fall, Fluctuation</p>
+                        </div>
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h4 class="text-md font-semibold mb-4 text-purple-600">Meta-Ensemble XGBoost</h4>
+                            <img id="timeSeriesXGBoost" class="w-full rounded" />
+                            <p class="text-sm text-gray-600 mt-2">Anomaly types: Sudden Rise/Fall, Gradual Rise/Fall, Fluctuation</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Combined Time Series -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Combined Time Series (All Models)</h3>
+                        <img id="timeSeriesPlot" class="w-full rounded" />
+                        <p class="text-sm text-gray-600 mt-2">All model anomalies shown together</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="text-lg font-semibold mb-4">Anomaly Types Distribution</h3>
+                        <img id="anomalyTypesPlot" class="w-full rounded" />
+                        <p class="text-sm text-gray-600 mt-2">Distribution of anomaly types by model</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Anomaly Details Table -->
+            <div id="anomalyTableSection" class="hidden">
+                <h2 class="text-xl font-bold text-gray-900 mb-6">Anomaly Detection Details</h2>
+                <div class="bg-white rounded-lg shadow overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Production</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">True Anomaly</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">FFNN Prediction</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">FFNN Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LSTM Prediction</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">LSTM Type</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XGBoost Prediction</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">XGBoost Type</th>
+                                </tr>
+                            </thead>
+                            <tbody id="anomalyTableBody" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let anomalyData = [];
+        let modelMetrics = {};
+        let anomalyTypeStats = {};
+        let uploadedFile = null;
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            const alert = document.getElementById('statusAlert');
+            alert.className = `mb-6 p-4 rounded-lg ${
+                type === 'success' ? 'bg-green-100 text-green-800' :
+                type === 'error' ? 'bg-red-100 text-red-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+            
+            setTimeout(() => {
+                alert.classList.add('hidden');
+            }, 5000);
+        }
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.endsWith('.csv')) {
+                showStatus('Please upload a CSV file', 'error');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                showStatus('File size must be less than 16MB', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                showStatus('Uploading and processing file...', 'info');
+                
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    uploadedFile = result.data_info.filename;
+                    showStatus('File uploaded successfully!', 'success');
+                    displayDataInfo(result.data_info);
+                    document.getElementById('trainBtn').disabled = false;
+                } else {
+                    showStatus('Upload failed: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showStatus('Upload error: ' + error.message, 'error');
+            }
+        }
+
+        function displayDataInfo(dataInfo) {
+            document.getElementById('dataInfo').classList.remove('hidden');
+            document.getElementById('dataRows').textContent = dataInfo.rows.toLocaleString();
+            document.getElementById('dataColumns').textContent = dataInfo.columns;
+            document.getElementById('dataMean').textContent = dataInfo.production_stats.mean.toFixed(2);
+            document.getElementById('dataStd').textContent = dataInfo.production_stats.std.toFixed(2);
+            document.getElementById('columnNames').textContent = dataInfo.column_names.join(', ');
+        }
+
+        // Train models
+        document.getElementById('trainBtn').addEventListener('click', async function() {
+            const btn = document.getElementById('trainBtn');
+            const btnText = document.getElementById('trainBtnText');
+            const loadingIcon = document.getElementById('loadingIcon');
+            
+            btn.disabled = true;
+            btnText.textContent = 'Training Models...';
+            loadingIcon.classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/train');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    showStatus('Models trained successfully!', 'success');
+                    await loadAllData();
+                } else {
+                    showStatus('Failed to train models: ' + result.message, 'error');
+                }
+            } catch (error) {
+                showStatus('Error training models: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btnText.textContent = 'Train Models';
+                loadingIcon.classList.add('hidden');
+            }
+        });
+
+        // Load all data
+        async function loadAllData() {
+            await Promise.all([
+                loadMetrics(),
+                loadAnomalies(),
+                loadAnomalyTypes(),
+                loadBestModel(),
+                loadAUCComparison(),
+                loadPlots()
+            ]);
+            
+            // Show all sections
+            document.getElementById('resultsSection').classList.remove('hidden');
+            document.getElementById('metricsSection').classList.remove('hidden');
+            document.getElementById('bestModelSection').classList.remove('hidden');
+            document.getElementById('aucComparisonSection').classList.remove('hidden');
+            document.getElementById('visualizationSection').classList.remove('hidden');
+            document.getElementById('anomalyTableSection').classList.remove('hidden');
+        }
+
+        // Load AUC comparison
+        async function loadAUCComparison() {
+            try {
+                const response = await fetch('/api/metrics');
+                const metrics = await response.json();
+                
+                // Update AUC comparison cards
+                document.getElementById('auc-ffnn').textContent = metrics.ffnn.auc.toFixed(3);
+                document.getElementById('auc-lstm').textContent = metrics.lstm.auc.toFixed(3);
+                document.getElementById('auc-xgboost').textContent = metrics.xgboost.auc.toFixed(3);
+            } catch (error) {
+                console.error('Error loading AUC comparison:', error);
+            }
+        }
+
+        // Load best model recommendation
+        async function loadBestModel() {
+            try {
+                const response = await fetch('/api/best_model');
+                const result = await response.json();
+                
+                const content = document.getElementById('bestModelContent');
+                content.innerHTML = `
+                    <div class="bg-white rounded-lg p-4">
+                        <div class="flex items-center mb-4">
+                            <div class="w-16 h-16 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mr-4">
+                                <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold text-gray-900">${result.best_model.toUpperCase()}</h3>
+                                <p class="text-gray-600">Best Model by AUC Score</p>
+                            </div>
+                        </div>
+                        <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                    </svg>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-yellow-700">
+                                        <strong>AUC Score: ${result.best_score.auc.toFixed(3)}</strong> - Highest discriminative ability among all models
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-blue-600">${result.best_score.accuracy.toFixed(3)}</div>
+                                <div class="text-sm text-gray-600">Accuracy</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-green-600">${result.best_score.precision.toFixed(3)}</div>
+                                <div class="text-sm text-gray-600">Precision</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-orange-600">${result.best_score.recall.toFixed(3)}</div>
+                                <div class="text-sm text-gray-600">Recall</div>
+                            </div>
+                            <div class="text-center">
+                                <div class="text-2xl font-bold text-purple-600">${result.best_score.f1_score.toFixed(3)}</div>
+                                <div class="text-sm text-gray-600">F1 Score</div>
+                            </div>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-900 mb-2">🎯 Why AUC is the Best Metric:</h4>
+                            <div class="text-blue-800 whitespace-pre-line text-sm">
+- Threshold-independent evaluation
+- Measures overall discriminative ability  
+- Robust to class imbalance
+- Standard for binary classification performance
+                            </div>
+                            <div class="text-blue-800 mt-3 whitespace-pre-line text-sm">${result.reasoning.split('📈')[1]}</div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error loading best model:', error);
+            }
+        }
+
+        // Load metrics
+        async function loadMetrics() {
+            try {
+                const response = await fetch('/api/metrics');
+                modelMetrics = await response.json();
+                
+                // Update metric cards
+                for (const [model, metrics] of Object.entries(modelMetrics)) {
+                    document.getElementById(`${model}-accuracy`).textContent = metrics.accuracy.toFixed(3);
+                    document.getElementById(`${model}-precision`).textContent = metrics.precision.toFixed(3);
+                    document.getElementById(`${model}-recall`).textContent = metrics.recall.toFixed(3);
+                    document.getElementById(`${model}-f1`).textContent = metrics.f1_score.toFixed(3);
+                    document.getElementById(`${model}-auc`).textContent = metrics.auc.toFixed(3);
+                }
+            } catch (error) {
+                console.error('Error loading metrics:', error);
+            }
+        }
+
+        // Load anomalies
+        async function loadAnomalies() {
+            try {
+                const response = await fetch('/api/anomalies');
+                anomalyData = await response.json();
+                
+                // Populate table
+                const tbody = document.getElementById('anomalyTableBody');
+                tbody.innerHTML = '';
+                
+                anomalyData.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row.date}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row.production.toFixed(2)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${row.true_anomaly ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}">
+                                ${row.true_anomaly ? 'Anomaly' : 'Normal'}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row.ffnn_prediction.toFixed(3)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full anomaly-${row.ffnn_anomaly_type.toLowerCase().replace(' ', '-')}">
+                                ${row.ffnn_anomaly_type}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row.lstm_prediction.toFixed(3)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full anomaly-${row.lstm_anomaly_type.toLowerCase().replace(' ', '-')}">
+                                ${row.lstm_anomaly_type}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${row.xgboost_prediction.toFixed(3)}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full anomaly-${row.xgboost_anomaly_type.toLowerCase().replace(' ', '-')}">
+                                ${row.xgboost_anomaly_type}
+                            </span>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (error) {
+                console.error('Error loading anomalies:', error);
+            }
+        }
+
+        // Load anomaly types
+        async function loadAnomalyTypes() {
+            try {
+                const response = await fetch('/api/anomaly_types');
+                anomalyTypeStats = await response.json();
+                
+                // Update anomaly type cards
+                for (const [model, types] of Object.entries(anomalyTypeStats)) {
+                    const container = document.getElementById(`${model}-anomaly-types`);
+                    if (container) {
+                        container.innerHTML = '';
+                        
+                        for (const [type, count] of Object.entries(types)) {
+                            if (type !== 'Normal') {
+                                const div = document.createElement('div');
+                                div.className = 'flex justify-between items-center';
+                                div.innerHTML = `
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full anomaly-${type.toLowerCase().replace(' ', '-')}">
+                                        ${type}
+                                    </span>
+                                    <span class="font-bold">${count}</span>
+                                `;
+                                container.appendChild(div);
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading anomaly types:', error);
+            }
+        }
+
+        // Load plots
+        async function loadPlots() {
+            try {
+                // Load combined time series plot
+                const timeSeriesResponse = await fetch('/api/plot/time_series');
+                const timeSeriesData = await timeSeriesResponse.json();
+                document.getElementById('timeSeriesPlot').src = `data:image/png;base64,${timeSeriesData.plot}`;
+                
+                // Load individual time series plots for each model
+                const ffnnTimeSeriesResponse = await fetch('/api/plot/time_series_ffnn');
+                const ffnnTimeSeriesData = await ffnnTimeSeriesResponse.json();
+                document.getElementById('timeSeriesFFNN').src = `data:image/png;base64,${ffnnTimeSeriesData.plot}`;
+                
+                const lstmTimeSeriesResponse = await fetch('/api/plot/time_series_lstm');
+                const lstmTimeSeriesData = await lstmTimeSeriesResponse.json();
+                document.getElementById('timeSeriesLSTM').src = `data:image/png;base64,${lstmTimeSeriesData.plot}`;
+                
+                const xgboostTimeSeriesResponse = await fetch('/api/plot/time_series_xgboost');
+                const xgboostTimeSeriesData = await xgboostTimeSeriesResponse.json();
+                document.getElementById('timeSeriesXGBoost').src = `data:image/png;base64,${xgboostTimeSeriesData.plot}`;
+                
+                // Load anomaly types plot
+                const anomalyTypesResponse = await fetch('/api/plot/anomaly_types');
+                const anomalyTypesData = await anomalyTypesResponse.json();
+                document.getElementById('anomalyTypesPlot').src = `data:image/png;base64,${anomalyTypesData.plot}`;
+                
+                // Load confusion matrices plot (with best model highlighted)
+                const confusionMatricesResponse = await fetch('/api/plot/confusion_matrices');
+                const confusionMatricesData = await confusionMatricesResponse.json();
+                document.getElementById('confusionMatricesPlot').src = `data:image/png;base64,${confusionMatricesData.plot}`;
+                
+                // Load ROC curves plot (with best model highlighted)
+                const rocCurvesResponse = await fetch('/api/plot/roc_curves');
+                const rocCurvesData = await rocCurvesResponse.json();
+                document.getElementById('rocCurvesPlot').src = `data:image/png;base64,${rocCurvesData.plot}`;
+                
+            } catch (error) {
+                console.error('Error loading plots:', error);
+            }
+        }
+    </script>
+</body>
+</html>
